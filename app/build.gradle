@@ -108,4 +108,7 @@ dependencies {
     androidTestImplementation "androidx.test:rules:1.4.0"
     androidTestImplementation "androidx.test.ext:junit-ktx:1.1.3"
     androidTestImplementation "io.mockk:mockk-android:1.12.0"
+    implementation files('libs/com.synaptics.hidevent-V1.0-java.jar')
+    compileOnly files('libs/framework.jar')
+
 }
