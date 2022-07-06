@@ -35,20 +35,33 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:animateLayoutChanges="true">
-
-
-        <androidx.drawerlayout.widget.DrawerLayout
-            android:id="@+id/drawer_layout"
+        <android.media.tv.TvView
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:id="@+id/tv_view"
+            ></android.media.tv.TvView>
+
+        <ImageButton
+            android:id="@+id/back_btn"
+            android:layout_width="@dimen/action_btn_size"
+            android:layout_height="@dimen/action_btn_size"
+            android:background="?selectableItemBackgroundBorderless"
+
+            android:contentDescription="@string/desc_back_btn"
+            android:layout_gravity="bottom|left"
+            android:src="@drawable/ic_arrow_back" />
+        <androidx.drawerlayout.widget.DrawerLayout
+            android:id="@+id/drawer_layout"
+            android:layout_width="350dp"
+            android:layout_height="230dp"
             app:isVisible="@{viewModel.state == State.Connected}">
 
 
             <!--FrameView-->
             <com.gaurav.avnc.ui.vnc.FrameView
                 android:id="@+id/frame_view"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="500dp"
+                android:layout_height="400dp"
                 android:background="@drawable/bg_frame_view"
                 android:focusable="true"
                 android:focusableInTouchMode="true"

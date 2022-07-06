@@ -15,8 +15,11 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Rect
+import android.media.tv.TvContract
+import android.media.tv.TvInputManager
 import android.os.Build
 import android.os.Bundle
+import android.os.RemoteException
 import android.util.Log
 import android.util.Rational
 import android.view.*
@@ -34,6 +37,7 @@ import com.gaurav.avnc.util.Experimental
 import com.gaurav.avnc.util.SamsungDex
 import com.gaurav.avnc.viewmodel.VncViewModel
 import com.gaurav.avnc.vnc.VncUri
+import com.synaptics.hidevent.V1_0.IHidevent
 import kotlinx.coroutines.delay
 import java.lang.ref.WeakReference
 
@@ -66,6 +70,7 @@ class VncActivity : AppCompatActivity() {
     val touchHandler by lazy { TouchHandler(viewModel, dispatcher) }
     val keyHandler by lazy { KeyHandler(dispatcher, profile.keyCompatMode, viewModel.pref) }
     private val virtualKeys by lazy { VirtualKeys(this) }
+    private var mIHidevent: IHidevent?=null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,7 +95,103 @@ class VncActivity : AppCompatActivity() {
         viewModel.sshHostKeyVerifyRequest.observe(this) { showHostKeyDialog() }
         viewModel.state.observe(this) { onClientStateChanged(it) }
         viewModel.initConnection(profile) //Should be called after observers has been setup
+
+        // add for alex
+        // todo : need code refactoring
+        playHdmi(true)
+
+
+        try {
+            mIHidevent = IHidevent.getService()
+            Log.e("alex", "getService")
+            mIHidevent?.hubDeviceOpen()
+            Log.e("alex", "hubDeviceOpen")
+            val mode: Byte = 0
+            val rValue: Int = mIHidevent?.hubDeviceWriteEvent(mode)?:-1
+            Log.e("alex", "hubDeviceWriteEvent 0:$rValue")
+        } catch (e: RemoteException) {
+            Log.e("alex", "fail to get hidevent HAL service: $e")
+        } catch (e: NoSuchElementException) {
+            Log.e("alex", "fail to get hidevent HAL service: $e")
+        }
+
+        binding.tvView.setOnTouchListener(FloatingListener())
+
+        binding.backBtn.setOnClickListener(object : View.OnClickListener {
+            override fun onClick(v: View) {
+                finish()
+            }
+        } )
+
     }
+
+    inner class FloatingListener : View.OnTouchListener {
+        private var mTouchStartX = 0
+        private var mTouchStartY = 0
+        private var mTouchCurrentX = 0
+        private var mTouchCurrentY = 0
+
+        private var mStartX = 0
+        private var mStartY = 0
+        private var mStopX = 0
+        private var mStopY = 0
+
+        private var isMove = false
+        private var rawEvent = IntArray(3)
+        override fun onTouch(v: View, event: MotionEvent): Boolean {
+            val action = event.action
+            when (action) {
+                MotionEvent.ACTION_DOWN -> {
+                    Log.e("alex", "onTouchEvent ACTION_DOWN")
+                    isMove = false
+                    mTouchStartX = event.rawX.toInt()
+                    mTouchStartY = event.rawY.toInt()
+                    mStartX = event.x.toInt()
+                    mStartY = event.y.toInt()
+
+                    rawEvent.set(0,1)
+                    rawEvent.set(1,mStartX)
+                    rawEvent.set(2,mStartY)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    Log.e("alex", "onTouchEvent ACTION_MOVE")
+                    mTouchCurrentX = event.rawX.toInt()
+                    mTouchCurrentY = event.rawY.toInt()
+                    mTouchStartX = mTouchCurrentX
+                    mTouchStartY = mTouchCurrentY
+
+                    rawEvent.set(0,1)
+                    rawEvent.set(1,event.x.toInt())
+                    rawEvent.set(2,event.y.toInt())
+                }
+                MotionEvent.ACTION_UP -> {
+                    Log.e("alex", "onTouchEvent ACTION_UP" + event.x + ":" + event.y)
+                    mStopX = event.x.toInt()
+                    mStopY = event.y.toInt()
+
+                    rawEvent.set(0,0);
+                    rawEvent.set(1,mStopX)
+                    rawEvent.set(2,mStopY)
+                    if (Math.abs(mStopX) <= 1920 - 200) {
+                        isMove = true
+                    }
+                    if (Math.abs(mStopY) <= 1080 - 200) {
+                        isMove = true
+                    }
+                }
+                else -> {}
+            }
+
+            try {
+                mIHidevent?.hidDeviceWriteEvent(rawEvent.get(0), rawEvent.get(1), rawEvent.get(2))
+            } catch (e: RemoteException) {
+                e.printStackTrace()
+            }
+            Log.e("alex", "hidDeviceWriteEvent :" + rawEvent.get(0) + ":" + rawEvent.get(1) + ":" + rawEvent.get(2))
+            return isMove
+        }
+    }
+
 
     override fun onResume() {
         super.onResume()
@@ -106,8 +207,32 @@ class VncActivity : AppCompatActivity() {
         super.onStop()
 
         cleanUp()
-
+        playHdmi(false)
+        val mode: Byte = 1
+        var rValue = 0
+        try {
+            rValue = mIHidevent?.hubDeviceWriteEvent(mode)?:-1
+        } catch (e: RemoteException) {
+            e.printStackTrace()
+        }
+        Log.e("alex", "hubDeviceWriteEvent 1:$rValue")
+        try {
+            mIHidevent?.hubDeviceClose()
+        } catch (e: RemoteException) {
+            e.printStackTrace()
+        }
+        Log.e("alex", "hubDeviceClose")
         binding.frameView.onPause()
+    }
+
+    private fun playHdmi(start: Boolean) {
+        binding.tvView.reset()
+        if (start) {
+            val tvInputManager = getSystemService(TV_INPUT_SERVICE) as TvInputManager
+            val list = tvInputManager.tvInputList
+            val uri = TvContract.buildChannelUriForPassthroughInput(list[0].id)
+            binding.tvView.tune(list[0].id, uri)
+        }
     }
 
     private fun cleanUp() {
@@ -193,7 +318,7 @@ class VncActivity : AppCompatActivity() {
             window.decorView.setOnSystemUiVisibilityChangeListener { updateSystemUiVisibility() }
         }
 
-        binding.root.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+        binding.frameView.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
             viewModel.frameState.setWindowSize(v.width.toFloat(), v.height.toFloat())
         }
 
